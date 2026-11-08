@@ -1,0 +1,209 @@
+name: "1. Setup EmDash & R2/D1 (初回サイト構築)"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_name:
+        description: "Cloudflare上に作成するEmDashサイト名 (URLの一部になります)"
+        required: false
+        default: "emdash-xlog"
+      site_title:
+        description: "サイトの表示タイトル"
+        required: false
+        default: "X-Log"
+      site_subtitle:
+        description: "サイトのサブタイトル（説明文）"
+        required: false
+        default: "Daily X (Twitter) Archive powered by EmDash"
+      d1_name:
+        description: "作成するCloudflare D1データベース名"
+        required: false
+        default: "x-logger-db"
+      r2_bucket:
+        description: "作成するCloudflare R2バケット名（画像・動画保存用）"
+        required: false
+        default: "x-logger-media"
+
+jobs:
+  setup-emdash:
+    runs-on: ubuntu-24.04
+    name: Provision R2 + D1 & Deploy EmDash Site
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Provision Cloudflare R2 Bucket & D1 Database
+        id: provision
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SITE_NAME: ${{ github.event.inputs.site_name || 'emdash-xlog' }}
+          SITE_TITLE: ${{ github.event.inputs.site_title || 'X-Log' }}
+          SITE_SUBTITLE: ${{ github.event.inputs.site_subtitle || 'Daily X (Twitter) Archive powered by EmDash' }}
+          D1_NAME: ${{ github.event.inputs.d1_name || 'x-logger-db' }}
+          R2_BUCKET: ${{ github.event.inputs.r2_bucket || 'x-logger-media' }}
+        run: |
+          if [ ! -f "wrangler.toml" ]; then
+            for d in */; do
+              if [ "$d" != "emdash-site/" ] && [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi
+            done
+          fi
+          node -e '
+            const fs = require("fs");
+            const token = (process.env.CLOUDFLARE_API_TOKEN || "").trim();
+            const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+            const d1Name = (process.env.D1_NAME || "x-logger-db").trim();
+            const r2Bucket = (process.env.R2_BUCKET || "x-logger-media").trim();
+            const siteName = (process.env.SITE_NAME || "emdash-xlog").trim();
+            const siteTitle = process.env.SITE_TITLE || "X-Log";
+            const siteSubtitle = process.env.SITE_SUBTITLE || "";
+
+            if (!token || !accountId) {
+              console.error("❌ GitHub Secrets に CLOUDFLARE_API_TOKEN または CLOUDFLARE_ACCOUNT_ID が設定されていません。");
+              console.error("👉 Settings -> Secrets and variables -> Actions から登録してください。");
+              process.exit(1);
+            }
+
+            const headers = {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json"
+            };
+
+            async function main() {
+              // 1. R2 バケットの確認・自動作成
+              console.log(`🪣 Checking R2 Bucket: ${r2Bucket}...`);
+              const r2Check = await fetch(
+                `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${encodeURIComponent(r2Bucket)}`,
+                { method: "GET", headers }
+              );
+              if (r2Check.ok) {
+                console.log(`✨ R2 Bucket "${r2Bucket}" already exists.`);
+              } else {
+                console.log(`🌀 Creating R2 Bucket "${r2Bucket}"...`);
+                const r2Create = await fetch(
+                  `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets`,
+                  {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({ name: r2Bucket })
+                  }
+                );
+                const r2Json = await r2Create.json();
+                if (!r2Create.ok && !JSON.stringify(r2Json).includes("already exists") && !JSON.stringify(r2Json).includes("10004")) {
+                  console.error("❌ R2バケットの作成に失敗しました:", JSON.stringify(r2Json));
+                  console.error("💡 ヒント: Cloudflareダッシュボードの「R2 Object Storage」を有効化し、APIトークンの権限に「Account -> Workers R2 Storage -> Edit」を追加してください。");
+                  process.exit(1);
+                }
+                console.log(`✨ Created R2 Bucket "${r2Bucket}".`);
+              }
+
+              // 2. D1 データベースの確認・自動作成
+              console.log(`🗄️ Checking D1 Database: ${d1Name}...`);
+              const d1ListRes = await fetch(
+                `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database?name=${encodeURIComponent(d1Name)}`,
+                { method: "GET", headers }
+              );
+              const d1ListJson = await d1ListRes.json();
+              if (!d1ListRes.ok) {
+                console.error("❌ D1一覧の取得に失敗しました:", JSON.stringify(d1ListJson));
+                console.error("💡 ヒント: Cloudflare APIトークンの権限に「Account -> D1 -> Edit」を追加してください。");
+                process.exit(1);
+              }
+
+              let dbObj = (d1ListJson.result || []).find((d) => d.name === d1Name);
+              if (dbObj && dbObj.uuid) {
+                console.log(`✨ D1 Database "${d1Name}" already exists (ID: ${dbObj.uuid}).`);
+              } else {
+                console.log(`🌀 Creating D1 Database "${d1Name}"...`);
+                const d1CreateRes = await fetch(
+                  `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database`,
+                  {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({ name: d1Name })
+                  }
+                );
+                const d1CreateJson = await d1CreateRes.json();
+                if (!d1CreateRes.ok || !d1CreateJson.result?.uuid) {
+                  console.error("❌ D1データベースの作成に失敗しました:", JSON.stringify(d1CreateJson));
+                  console.error("💡 ヒント: Cloudflare APIトークンの権限に「Account -> D1 -> Edit」を追加してください。");
+                  process.exit(1);
+                }
+                dbObj = d1CreateJson.result;
+                console.log(`✨ Created D1 Database "${d1Name}" (ID: ${dbObj.uuid}).`);
+              }
+
+              // 3. emdash-site/wrangler.toml に D1 と R2 のバインディングを書き込む
+              const tomlContent = [
+                `name = ${JSON.stringify(siteName)}`,
+                `main = "src/worker.js"`,
+                `compatibility_date = "2024-11-01"`,
+                ``,
+                `[vars]`,
+                `SITE_TITLE = ${JSON.stringify(siteTitle)}`,
+                `SITE_SUBTITLE = ${JSON.stringify(siteSubtitle)}`,
+                `TIMEZONE = "Asia/Tokyo"`,
+                `POSTS_PER_PAGE = "7"`,
+                ``,
+                `[[d1_databases]]`,
+                `binding = "DB"`,
+                `database_name = ${JSON.stringify(d1Name)}`,
+                `database_id = ${JSON.stringify(dbObj.uuid)}`,
+                ``,
+                `[[r2_buckets]]`,
+                `binding = "MEDIA"`,
+                `bucket_name = ${JSON.stringify(r2Bucket)}`,
+                ``
+              ].join("\n");
+
+              fs.writeFileSync("emdash-site/wrangler.toml", tomlContent);
+              console.log("✅ Generated emdash-site/wrangler.toml with D1 & R2 bindings.");
+            }
+
+            main().catch((err) => {
+              console.error(err);
+              process.exit(1);
+            });
+          '
+
+      - name: Initialize D1 Schema & Deploy EmDash Site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_NAME: ${{ github.event.inputs.d1_name || 'x-logger-db' }}
+          TRIGGER_SECRET: ${{ secrets.TRIGGER_SECRET }}
+        run: |
+          if [ ! -f "wrangler.toml" ]; then
+            for d in */; do
+              if [ "$d" != "emdash-site/" ] && [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi
+            done
+          fi
+          cd emdash-site
+          npm install
+          npx wrangler d1 execute "$D1_NAME" --remote --file=schema.sql
+          npx wrangler deploy | tee deploy.log
+
+          if [ -n "$TRIGGER_SECRET" ]; then
+            node -e '
+              const fs = require("fs");
+              fs.writeFileSync(".cf-secrets.json", JSON.stringify({ TRIGGER_SECRET: process.env.TRIGGER_SECRET.trim() }));
+            '
+            npx wrangler secret bulk .cf-secrets.json
+            rm -f .cf-secrets.json
+          fi
+
+          DEPLOYED_URL=$(grep -Eo 'https://[a-zA-Z0-9._-]+\.workers\.dev' deploy.log | head -n 1 || true)
+          echo "### 🎉 EmDash + R2 + D1 の自動構築が完了しました！" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$DEPLOYED_URL" ]; then
+            echo "- **サイトURL**: [$DEPLOYED_URL]($DEPLOYED_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "- **管理画面URL**: [$DEPLOYED_URL/_emdash/admin]($DEPLOYED_URL/_emdash/admin)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- 続けて左メニューの **「2. Deploy X-Logger」** を実行すると、Xポストの自動取得がスタートします。" >> $GITHUB_STEP_SUMMARY
