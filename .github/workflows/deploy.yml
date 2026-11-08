@@ -1,5 +1,8 @@
 name: "2. Deploy X-Logger (自動取得ワーカーのデプロイ)"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   push:
     branches:
@@ -29,7 +32,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Deploy X-Logger & Bind D1/R2
     steps:
       - name: Checkout repository
@@ -38,11 +41,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install Wrangler
         run: |
-          if [ ! -f "wrangler.toml" ]; then for d in */; do if [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi; done; fi
+          if [ ! -f "wrangler.toml" ]; then
+            for d in */; do
+              if [ "$d" != "emdash-site/" ] && [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi
+            done
+          fi
           npm install
 
       - name: Resolve D1 + R2 Bindings & Deploy X-Logger Worker
@@ -53,7 +60,14 @@ jobs:
           D1_NAME: ${{ github.event.inputs.d1_name || 'x-logger-db' }}
           R2_BUCKET: ${{ github.event.inputs.r2_bucket || 'x-logger-media' }}
         run: |
-          if [ ! -f "wrangler.toml" ]; then for d in */; do if [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi; done; fi
+          if [ ! -f "wrangler.toml" ]; then
+            for d in */; do
+              if [ "$d" != "emdash-site/" ] && [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi
+            done
+          fi
+
+          npx wrangler r2 bucket create "$R2_BUCKET" || true
+
           node -e '
             const fs = require("fs");
             const token = (process.env.CLOUDFLARE_API_TOKEN || "").trim();
@@ -62,7 +76,7 @@ jobs:
             const r2Bucket = (process.env.R2_BUCKET || "x-logger-media").trim();
 
             if (!token || !accountId) {
-              console.error("❌ CLOUDFLARE_API_TOKEN または CLOUDFLARE_ACCOUNT_ID が設定されていません。");
+              console.error("❌ GitHub Secrets に CLOUDFLARE_API_TOKEN または CLOUDFLARE_ACCOUNT_ID が設定されていません。");
               process.exit(1);
             }
 
@@ -123,7 +137,6 @@ jobs:
               // 4. wrangler.toml の更新（Cron・D1・R2バインディングを設定）
               let toml = fs.readFileSync("wrangler.toml", "utf8");
               toml = toml.replace(/crons\s*=\s*\[.*?\]/, `crons = ["${cronExpr}"]`);
-              // 既存の [[d1_databases]] / [[r2_buckets]] セクションがあれば除去して末尾に追記
               toml = toml.replace(/\[\[d1_databases\]\][\s\S]*?(?=\n\[|\s*$)/g, "").trim();
               toml = toml.replace(/\[\[r2_buckets\]\][\s\S]*?(?=\n\[|\s*$)/g, "").trim();
 
@@ -170,7 +183,11 @@ jobs:
           GITHUB_REPO_SECRET: ${{ secrets.GH_SYNC_REPO || github.repository }}
           TRIGGER_SECRET: ${{ secrets.TRIGGER_SECRET }}
         run: |
-          if [ ! -f "wrangler.toml" ]; then for d in */; do if [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi; done; fi
+          if [ ! -f "wrangler.toml" ]; then
+            for d in */; do
+              if [ "$d" != "emdash-site/" ] && [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi
+            done
+          fi
           node -e '
             const fs = require("fs");
             const secrets = {};
