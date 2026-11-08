@@ -1,0 +1,31 @@
+name = "x-logger-emdash"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# Cloudflare Cron Triggers: デフォルトは最短の1分おき (* * * * *) に実行
+# （GitHub Actions 実行時の入力欄、またはここの crons で自由に変更可能）
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# タイムゾーン（日付区切りと時刻表示に使用）
+TIMEZONE = "Asia/Tokyo"
+
+# 1回のCron実行でX APIから取得する最大ポスト数 (5〜100)
+X_MAX_RESULTS = "20"
+
+# 取得対象のポスト種別 ("true" / "false")
+INCLUDE_REPLIES = "true"
+INCLUDE_QUOTES = "true"
+INCLUDE_RETWEETS = "true"
+
+# GitHub Markdown出力モード（カンマ区切りで複数選択可: "year", "month", "full"）
+# year  -> Year2026.md のように年別ファイルを作成・更新
+# month -> Month202611.md のように月別ファイルを作成・更新
+# full  -> Fulldata.md に全件を追記・更新
+GITHUB_MD_TARGETS = "year,month,full"
+
+# GitHubリポジトリ内の保存先ディレクトリ（空文字ならルート直下に Year2026.md 等を保存）
+GITHUB_MD_DIR = ""
+
+# ※ D1 (DB) と R2 (MEDIA) のバインディングは GitHub Actions (deploy.yml) が自動取得・設定します

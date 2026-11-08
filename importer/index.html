@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>x-logger (EmDash版) アーカイブ変換・一括インポートツール (EmDash D1+R2 / GitHub Markdown)</title>
+  <style>
+    :root {
+      --bg: #f7f9fa;
+      --surface: #ffffff;
+      --border: #ccd6dd;
+      --text: #14171a;
+      --muted: #536471;
+      --primary: #1d9bf0;
+      --primary-hover: #1a8cd8;
+      --focus: #0b57d0;
+      --danger: #d93025;
+      --success: #188038;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    main {
+      max-width: 900px;
+      margin-inline: auto;
+    }
+
+    header {
+      margin-block-end: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-block: 0 0.5rem;
+    }
+
+    fieldset {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-block-end: 1.5rem;
+    }
+
+    legend {
+      font-weight: 700;
+      font-size: 1.1rem;
+      padding-inline: 0.5rem;
+    }
+
+    /* Gestalt Proximity Rule: label-to-input margin < group-to-group margin */
+    .form-group {
+      margin-block-end: 1.5rem;
+    }
+
+    .form-group:last-child {
+      margin-block-end: 0;
+    }
+
+    label.field-label {
+      display: inline-block;
+      font-weight: 600;
+      margin-block-end: 0.35rem;
+      padding: 10px 0;
+      margin-block-start: -10px;
+    }
+
+    .hint {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-block-top: 0.25rem;
+    }
+
+    .error-msg {
+      display: none;
+      font-size: 0.875rem;
+      color: var(--danger);
+      font-weight: 600;
+      margin-block-top: 0.25rem;
+    }
+
+    .error-msg.visible {
+      display: block;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    input[type="password"],
+    input[type="date"],
+    input[type="file"] {
+      width: 100%;
+      font-size: 1rem;
+      padding: 0.75rem;
+      min-height: 48px;
+      border: 1px solid #8899a6;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    input:invalid:user-invalid {
+      border-color: var(--danger);
+      background-color: #fff8f7;
+    }
+
+    input:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .password-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .password-row input {
+      flex: 1;
+    }
+
+    .choice-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-block-top: 0.35rem;
+    }
+
+    .choice-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      min-height: 48px;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fafcfd;
+      cursor: pointer;
+    }
+
+    .choice-item input[type="checkbox"],
+    .choice-item input[type="radio"] {
+      width: 1.25rem;
+      height: 1.25rem;
+      accent-color: var(--primary);
+      margin: 0;
+    }
+
+    .date-range-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 640px) {
+      .date-range-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (pointer: coarse) {
+      input[type="text"],
+      input[type="url"],
+      input[type="password"],
+      input[type="date"],
+      input[type="file"],
+      button,
+      .choice-item {
+        min-height: 52px;
+      }
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-block-top: 1rem;
+    }
+
+    button {
+      font-size: 1rem;
+      font-weight: 600;
+      min-height: 48px;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+
+    button.btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    button.btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    button.btn-secondary {
+      background: #fff;
+      color: var(--text);
+      border-color: #8899a6;
+    }
+
+    button.btn-secondary:hover:not(:disabled) {
+      background: #f0f4f7;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-block-top: 1.5rem;
+    }
+
+    .log-output {
+      background: #14171a;
+      color: #e1e8ed;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.875rem;
+      padding: 1rem;
+      border-radius: 6px;
+      max-height: 320px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin-block-top: 0.75rem;
+    }
+
+    .visually-hidden {
+      position: absolute;
+      clip-path: inset(50%);
+      overflow: hidden;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>x-logger (EmDash版) アーカイブ変換・一括インポートツール</h1>
+      <p>
+        X（旧Twitter）のアーカイブデータ（<code>data/tweets.js</code> および <code>data/tweets_media/</code>）を読み込み、
+        <code>xlog.showya-kiss.com</code> 形式で日付別（<code>YYYY-MM-DD</code>）にまとめた記事と画像・動画を
+        <strong>EmDash (Cloudflare D1 + R2) へ直接一括送信</strong>、<strong>D1 インポート用 SQL 生成</strong>、
+        および <strong>GitHub 用 Markdown（Year / Month / Fulldata）</strong> を生成します。
+      </p>
+    </header>
+
+    <form id="archive-form" action="#archive-form" method="POST" novalidate>
+      <!-- 1. アーカイブファイルの選択 -->
+      <fieldset>
+        <legend>1. Xアーカイブデータの読み込み</legend>
+
+        <div class="form-group">
+          <label class="field-label" for="archive-folder">解凍したXアーカイブのフォルダを選択（推奨: data フォルダまたはルートフォルダ）</label>
+          <input
+            type="file"
+            id="archive-folder"
+            name="archive_folder"
+            webkitdirectory
+            directory
+            multiple
+            aria-describedby="archive-folder-help"
+          >
+          <span id="archive-folder-help" class="hint">
+            フォルダごと選択すると <code>tweets.js</code> と <code>tweets_media/</code> 内の画像・動画ファイルを自動認識します。
+          </span>
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="tweets-js-file">または tweets.js ファイルを単体で選択</label>
+          <input
+            type="file"
+            id="tweets-js-file"
+            name="tweets_js_file"
+            accept=".js,.json"
+            multiple
+            aria-describedby="tweets-js-help"
+          >
+          <span id="tweets-js-help" class="hint">
+            <code>tweets.js</code>（分割されている場合は <code>tweets-part1.js</code> 等も複数選択可）のみを読み込む場合に使用します。
+          </span>
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="x-username">X ユーザー名（@なし） *</label>
+          <input
+            type="text"
+            id="x-username"
+            name="x_username"
+            required
+            pattern="[A-Za-z0-9_]{1,15}"
+            autocomplete="username"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-describedby="x-username-help x-username-error"
+          >
+          <span id="x-username-help" class="hint">
+            アーカイブ内の <code>account.js</code> が見つかれば自動入力されます（例: <code>showya_kiss</code>）。
+          </span>
+          <span id="x-username-error" class="error-msg" role="alert">
+            [エラー] Xのユーザー名（半角英数字・アンダースコア、1〜15文字）を入力してください。
+          </span>
+        </div>
+      </fieldset>
+
+      <!-- 2. フィルタリング条件 -->
+      <fieldset>
+        <legend>2. 取得対象ポスト種別・期間フィルタ</legend>
+
+        <div class="form-group">
+          <span class="field-label">含めるポスト種別</span>
+          <div class="choice-list">
+            <label class="choice-item" for="inc-normal">
+              <input type="checkbox" id="inc-normal" name="inc_normal" checked>
+              <span>通常の自分のポスト</span>
+            </label>
+            <label class="choice-item" for="inc-quote">
+              <input type="checkbox" id="inc-quote" name="inc_quote" checked>
+              <span>引用ポスト（引用元リンクも <code>.x-log-quoted</code> で表示）</span>
+            </label>
+            <label class="choice-item" for="inc-reply">
+              <input type="checkbox" id="inc-reply" name="inc_reply" checked>
+              <span>自分・他者へのリプライ（リプライ先も <code>.x-log-quoted</code> で表示）</span>
+            </label>
+            <label class="choice-item" for="inc-rt">
+              <input type="checkbox" id="inc-rt" name="inc_rt" checked>
+              <span>単純なリポスト（RT）も取得して記録する</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group date-range-grid">
+          <div>
+            <label class="field-label" for="filter-start-date">開始日（任意）</label>
+            <input type="date" id="filter-start-date" name="filter_start_date">
+          </div>
+          <div>
+            <label class="field-label" for="filter-end-date">終了日（任意）</label>
+            <input type="date" id="filter-end-date" name="filter_end_date">
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- 3. EmDash (Cloudflare D1 + R2) 接続・メディア格納設定 -->
+      <fieldset>
+        <legend>3. EmDash (Cloudflare D1 + R2) 接続設定</legend>
+
+        <div class="form-group">
+          <span class="field-label">アーカイブ内の画像・動画（tweets_media）の扱い</span>
+          <div class="choice-list">
+            <label class="choice-item" for="media-mode-emdash-r2">
+              <input type="radio" id="media-mode-emdash-r2" name="media_mode" value="emdash_r2" checked>
+              <span>EmDash API 経由で <code>tweets_media</code> の画像・動画を Cloudflare R2 へ自動アップロードして保存する（推奨）</span>
+            </label>
+            <label class="choice-item" for="media-mode-original">
+              <input type="radio" id="media-mode-original" name="media_mode" value="original">
+              <span>X の元メディアURL（pbs.twimg.com 等）をそのまま使用する</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="wp-url">EmDash サイトURL（または X-Logger Worker URL）</label>
+          <input
+            type="url"
+            id="wp-url"
+            name="wp_url"
+            placeholder="https://emdash-xlog.xxxx.workers.dev"
+            autocomplete="url"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-describedby="wp-url-help wp-url-error"
+          >
+          <span id="wp-url-help" class="hint">例: <code>https://emdash-xlog.xxxx.workers.dev</code>（GitHub Actions で構築されたURLを入力）</span>
+          <span id="wp-url-error" class="error-msg" role="alert">
+            [エラー] 有効な EmDash サイトURL（https://...）を入力してください。
+          </span>
+        </div>
+
+        <div class="form-group">
+          <label class="field-label" for="wp-app-password">認証シークレットキー（TRIGGER_SECRET を設定している場合のみ）</label>
+          <div class="password-row">
+            <input
+              type="password"
+              id="wp-app-password"
+              name="wp_app_password"
+              placeholder="未設定なら空欄のままでOK"
+              autocomplete="current-password"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-describedby="wp-pass-warning"
+            >
+            <button
+              type="button"
+              id="toggle-wp-pass"
+              class="btn-secondary"
+              aria-pressed="false"
+              aria-label="認証シークレットキーを表示"
+              aria-describedby="wp-pass-warning"
+            >表示</button>
+          </div>
+          <span id="wp-pass-warning" class="visually-hidden">注意: クリックするとシークレットキーが画面に表示されます。</span>
+        </div>
+      </fieldset>
+
+      <!-- 4. GitHub Markdown 出力設定 -->
+      <fieldset>
+        <legend>4. GitHub 用 Markdown 出力設定（画像・動画なし、選択式）</legend>
+
+        <div class="form-group">
+          <span class="field-label">出力する Markdown ファイル形式（複数選択可）</span>
+          <div class="choice-list">
+            <label class="choice-item" for="md-target-year">
+              <input type="checkbox" id="md-target-year" name="md_target_year" checked>
+              <span>年別ファイル: <code>Year2026.md</code>（各年ごとに自動生成）</span>
+            </label>
+            <label class="choice-item" for="md-target-month">
+              <input type="checkbox" id="md-target-month" name="md_target_month" checked>
+              <span>月別ファイル: <code>Month202611.md</code>（各年月ごとに自動生成）</span>
+            </label>
+            <label class="choice-item" for="md-target-full">
+              <input type="checkbox" id="md-target-full" name="md_target_full" checked>
+              <span>全件まとめファイル: <code>Fulldata.md</code></span>
+            </label>
+          </div>
+          <span class="hint">※ご指定どおり、Markdownファイルには画像・動画は含めずテキストと元ポストリンクのみを整形して出力します。</span>
+        </div>
+      </fieldset>
+
+      <!-- 5. 実行アクションボタン -->
+      <fieldset>
+        <legend>5. 変換・インポートの実行</legend>
+        <div class="btn-row">
+          <button type="submit" id="btn-push-emdash" name="action_mode" value="push_emdash" class="btn-primary">
+            ⚡ EmDash (D1 + R2) へ直接メディア＋日別記事を一括送信
+          </button>
+          <button type="submit" id="btn-export-sql" name="action_mode" value="export_sql" class="btn-secondary">
+            Cloudflare D1 インポート用 SQL (.sql) をダウンロード
+          </button>
+          <button type="submit" id="btn-export-md" name="action_mode" value="export_md" class="btn-secondary">
+            選択した GitHub 用 Markdown (.md) を生成してダウンロード
+          </button>
+        </div>
+      </fieldset>
+    </form>
+
+    <section class="status-box" aria-live="polite">
+      <strong>ステータス: <span id="status-summary">アーカイブファイルを選択してください</span></strong>
+      <div id="log-output" class="log-output">待機中...</div>
+    </section>
+  </main>
+
+  <script>
+    const X_LOG_STYLE = `<style>
+    .x-log-day-container { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .x-log-post { border: 1px solid #e1e8ed; border-radius: 8px; padding: 12px; margin-bottom: 16px; background: #fff; }
+    .x-log-header { font-size: 0.85em; color: #657786; margin-bottom: 6px; }
+    .x-log-header a { color: #1da1f2; text-decoration: none; }
+    .x-log-body { font-size: 1.0em; line-height: 1.5; color: #14171a; word-break: break-word; }
+    .x-log-body p { margin: 0 0 1em 0; }
+    .x-log-body p:last-child { margin-bottom: 0; }
+    .x-log-media { margin-top: 10px; }
+    .x-log-media img, .x-log-media video { max-width: 100%; height: auto; border-radius: 6px; margin-top: 4px; display: block; }
+    .x-log-quoted { border: 1px solid #ccd6dd; border-radius: 6px; margin: 10px 2em; padding: 10px 2em; background: #f5f8fa; }
+    .x-log-quoted-header { font-weight: bold; font-size: 0.85em; color: #555; margin-bottom: 4px; }
+  </style>`;
+
+    // 状態保持
+    let loadedRawTweets = [];
+    let mediaFileMap = new Map(); // filename -> File
+
+    const statusSummary = document.getElementById("status-summary");
+    const logOutput = document.getElementById("log-output");
+
+    function appendLog(msg) {
+      const time = new Date().toLocaleTimeString("ja-JP");
+      logOutput.textContent += `\n[${time}] ${msg}`;
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function setSummary(msg) {
+      statusSummary.textContent = msg;
+      appendLog(msg);
+    }
+
+    // パスワード表示切替
+    const toggleWpPassBtn = document.getElementById("toggle-wp-pass");
+    const wpPassInput = document.getElementById("wp-app-password");
+    toggleWpPassBtn.addEventListener("click", () => {
+      const isShown = wpPassInput.type === "text";
+      wpPassInput.type = isShown ? "password" : "text";
+      toggleWpPassBtn.setAttribute("aria-pressed", String(!isShown));
+      toggleWpPassBtn.textContent = isShown ? "表示" : "隠す";
+    });
+
+    // バリデーション（blur で検証し、input でクリア）
+    const usernameInput = document.getElementById("x-username");
+    const usernameError = document.getElementById("x-username-error");
+    usernameInput.addEventListener("blur", () => {
+      if (!usernameInput.checkValidity()) {
+        usernameError.classList.add("visible");
+      }
+    });
+    usernameInput.addEventListener("input", () => {
+      usernameInput.setCustomValidity("");
+      usernameError.classList.remove("visible");
+    });
+
+    const wpUrlInput = document.getElementById("wp-url");
+    const wpUrlError = document.getElementById("wp-url-error");
+    wpUrlInput.addEventListener("blur", () => {
+      if (wpUrlInput.value && !wpUrlInput.checkValidity()) {
+        wpUrlError.classList.add("visible");
+      }
+    });
+    wpUrlInput.addEventListener("input", () => {
+      wpUrlInput.setCustomValidity("");
+      wpUrlError.classList.remove("visible");
+    });
+
+    // window.YTD.tweet.partX = [...] のパース
+    function parseYtdJsText(jsText) {
+      const eqIdx = jsText.indexOf("=");
+      if (eqIdx === -1) {
+        return JSON.parse(jsText);
+      }
+      const jsonPart = jsText.slice(eqIdx + 1).trim().replace(/;\s*$/, "");
+      return JSON.parse(jsonPart);
+    }
+
+    async function handleFilesSelected(fileList) {
+      loadedRawTweets = [];
+      mediaFileMap.clear();
+
+      const files = Array.from(fileList || []);
+      if (files.length === 0) return;
+
+      setSummary(`${files.length} 個のファイルをスキャン中...`);
+
+      const tweetJsFiles = [];
+      let accountJsFile = null;
+
+      for (const f of files) {
+        const relPath = f.webkitRelativePath || f.name;
+        if (/(^|\/)tweets(-part\d+)?\.js$/i.test(relPath) || /^tweets.*\.json$/i.test(f.name)) {
+          tweetJsFiles.push(f);
+        } else if (/(^|\/)account\.js$/i.test(relPath)) {
+          accountJsFile = f;
+        } else if (relPath.includes("tweets_media/")) {
+          mediaFileMap.set(f.name, f);
+        }
+      }
+
+      if (accountJsFile && !usernameInput.value) {
+        try {
+          const accText = await accountJsFile.text();
+          const accJson = parseYtdJsText(accText);
+          const uname = accJson?.[0]?.account?.username;
+          if (uname) {
+            usernameInput.value = uname;
+            usernameError.classList.remove("visible");
+            appendLog(`account.js からユーザー名 @${uname} を自動検出しました。`);
+          }
+        } catch (err) {
+          appendLog(`account.js の解析をスキップしました: ${err.message}`);
+        }
+      }
+
+      for (const tf of tweetJsFiles) {
+        try {
+          const text = await tf.text();
+          const parsed = parseYtdJsText(text);
+          for (const item of parsed) {
+            const t = item.tweet || item;
+            if (t && (t.id_str || t.id)) {
+              loadedRawTweets.push(t);
+            }
+          }
+        } catch (err) {
+          appendLog(`${tf.name} の読み込みエラー: ${err.message}`);
+        }
+      }
+
+      setSummary(
+        `読み込み完了: ポスト ${loadedRawTweets.length} 件 / メディアファイル ${mediaFileMap.size} 件`
+      );
+    }
+
+    document.getElementById("archive-folder").addEventListener("change", (e) => {
+      handleFilesSelected(e.target.files);
+    });
+
+    document.getElementById("tweets-js-file").addEventListener("change", (e) => {
+      handleFilesSelected(e.target.files);
+    });
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function formatInJst(dateInput) {
+      const date = new Date(dateInput);
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }).formatToParts(date);
+
+      const map = {};
+      for (const p of parts) map[p.type] = p.value;
+      const hour = map.hour === "24" ? "00" : map.hour;
+      return {
+        dateStr: `${map.year}-${map.month}-${map.day}`,
+        timeStr: `${hour}:${map.minute}`,
+        yearStr: map.year,
+        yearMonthStr: `${map.year}${map.month}`
+      };
+    }
+
+    /**
+     * tweets_media 内のローカルファイルを Tweet ID とメディアURLから照合
+     */
+    function findLocalMediaFile(tweetId, mediaUrl) {
+      if (!mediaUrl) return null;
+      const baseName = mediaUrl.split("/").pop().split("?")[0];
+      const expectedName = `${tweetId}-${baseName}`;
+      if (mediaFileMap.has(expectedName)) {
+        return mediaFileMap.get(expectedName);
+      }
+      for (const [name, file] of mediaFileMap.entries()) {
+        if (name.startsWith(`${tweetId}-`) && name.endsWith(baseName)) {
+          return file;
+        }
+      }
+      return null;
+    }
+
+    /**
+     * 読み込んだアーカイブツイート群をフィルタ＆正規化
+     */
+    function buildNormalizedArchivePosts() {
+      const username = usernameInput.value.trim().replace(/^@/, "");
+      const incNormal = document.getElementById("inc-normal").checked;
+      const incQuote = document.getElementById("inc-quote").checked;
+      const incReply = document.getElementById("inc-reply").checked;
+      const incRt = document.getElementById("inc-rt").checked;
+      const startDate = document.getElementById("filter-start-date").value;
+      const endDate = document.getElementById("filter-end-date").value;
+
+      // アーカイブ内の自身の過去ポストをIDで引けるようにしておく（自己リプライ・自己引用時の本文復元用）
+      const archiveTweetById = new Map();
+      for (const t of loadedRawTweets) {
+        archiveTweetById.set(String(t.id_str || t.id), t);
+      }
+
+      const normalized = [];
+
+      for (const t of loadedRawTweets) {
+        const id = String(t.id_str || t.id);
+        const rawText = String(t.full_text || t.text || "");
+        const isRetweet = rawText.startsWith("RT @");
+        const isReply = Boolean(t.in_reply_to_status_id_str || t.in_reply_to_status_id);
+
+        // URLエンティティから引用ポストURLを検出
+        const urls = t.entities?.urls || [];
+        let quotedUrlInfo = null;
+        for (const u of urls) {
+          const expanded = u.expanded_url || "";
+          const m = expanded.match(/^https?:\/\/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)\/status\/(\d+)/i);
+          if (m) {
+            quotedUrlInfo = { username: m[1], id: m[2], expandedUrl: expanded };
+            break;
+          }
+        }
+        const isQuote = Boolean(quotedUrlInfo) && !isRetweet;
+
+        if (isRetweet && !incRt) continue;
+        if (isReply && !isQuote && !isRetweet && !incReply) continue;
+        if (isQuote && !incQuote) continue;
+        if (!isRetweet && !isReply && !isQuote && !incNormal) continue;
+
+        const { dateStr, timeStr, yearStr, yearMonthStr } = formatInJst(t.created_at);
+        if (startDate && dateStr < startDate) continue;
+        if (endDate && dateStr > endDate) continue;
+
+        // メディアの抽出（extended_entities 優先）
+        const rawMedia = t.extended_entities?.media || t.entities?.media || [];
+        const mediaList = [];
+        for (const m of rawMedia) {
+          if (m.type === "video" || m.type === "animated_gif") {
+            const variants = m.video_info?.variants || [];
+            const mp4s = variants
+              .filter((v) => v.content_type === "video/mp4" && v.url)
+              .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+            const bestUrl = mp4s[0]?.url || m.media_url_https || m.media_url;
+            const localFile = findLocalMediaFile(id, bestUrl) || findLocalMediaFile(id, m.media_url_https);
+            mediaList.push({
+              type: mp4s.length > 0 ? "video" : "photo",
+              url: bestUrl,
+              localFile,
+              alt: "Post Media"
+            });
+          } else {
+            const imgUrl = m.media_url_https || m.media_url;
+            const localFile = findLocalMediaFile(id, imgUrl);
+            mediaList.push({
+              type: "photo",
+              url: imgUrl,
+              localFile,
+              alt: "Post Media"
+            });
+          }
+        }
+
+        // 引用・リプライ・RT元の情報構築
+        let referencedPost = null;
+        if (isRetweet) {
+          const rtMatch = rawText.match(/^RT @([A-Za-z0-9_]+):\s*([\s\S]*)$/);
+          if (rtMatch) {
+            referencedPost = {
+              id: "",
+              username: rtMatch[1],
+              text: rtMatch[2],
+              media: []
+            };
+          }
+        } else if (quotedUrlInfo) {
+          const localQuoted = archiveTweetById.get(quotedUrlInfo.id);
+          referencedPost = {
+            id: quotedUrlInfo.id,
+            username: quotedUrlInfo.username,
+            text: localQuoted ? String(localQuoted.full_text || localQuoted.text || "") : quotedUrlInfo.expandedUrl,
+            media: []
+          };
+        } else if (isReply) {
+          const replyId = String(t.in_reply_to_status_id_str || t.in_reply_to_status_id);
+          const replyUser = t.in_reply_to_screen_name || username;
+          const localReplied = archiveTweetById.get(replyId);
+          referencedPost = {
+            id: replyId,
+            username: replyUser,
+            text: localReplied
+              ? String(localReplied.full_text || localReplied.text || "")
+              : `https://x.com/${replyUser}/status/${replyId}`,
+            media: []
+          };
+        }
+
+        normalized.push({
+          id,
+          username,
+          createdAt: t.created_at,
+          dateStr,
+          timeStr,
+          yearStr,
+          yearMonthStr,
+          text: rawText,
+          media: mediaList,
+          referencedPost
+        });
+      }
+
+      return normalized;
+    }
+
+    /**
+     * EmDash API (/_emdash/api/media) へローカルメディアファイル（またはURL）をアップロードして Cloudflare R2 に保存
+     */
+    async function uploadLocalMediaToEmDash(mediaItem, tweetId, idx, emdashBaseUrl, secretKey) {
+      let blob = mediaItem.localFile;
+      let filename = mediaItem.localFile
+        ? `x-archive-${mediaItem.localFile.name}`
+        : `x-archive-${tweetId}-${idx}.${mediaItem.type === "video" ? "mp4" : "jpg"}`;
+
+      if (!blob && mediaItem.url) {
+        const res = await fetch(mediaItem.url);
+        if (!res.ok) throw new Error(`メディア取得失敗: ${mediaItem.url}`);
+        blob = await res.blob();
+      }
+      if (!blob) return mediaItem.url;
+
+      const contentType =
+        blob.type || (filename.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+
+      const headers = {
+        "Content-Type": contentType,
+        "X-Filename": filename
+      };
+      if (secretKey) {
+        headers.Authorization = `Bearer ${secretKey}`;
+      }
+
+      const uploadRes = await fetch(`${emdashBaseUrl}/_emdash/api/media`, {
+        method: "POST",
+        headers,
+        body: blob
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        throw new Error(`R2メディアアップロード失敗 (${uploadRes.status}): ${errText}`);
+      }
+      const data = await uploadRes.json();
+      return data.url || data.source_url || mediaItem.url;
+    }
+
+    /**
+     * メディアURL解決（EmDash R2 アップロード or 元URL）
+     */
+    async function resolveMediaUrlsForPosts(posts, mediaMode) {
+      const emdashBase = wpUrlInput.value.trim().replace(/\/+$/, "");
+      const secretKey = wpPassInput.value.trim();
+
+      if (mediaMode === "original") {
+        return;
+      }
+
+      if (mediaMode === "emdash_r2") {
+        if (!emdashBase) {
+          throw new Error("Cloudflare R2 へメディアをアップロードするには、EmDash サイトURL を入力してください。");
+        }
+        let totalMedia = 0;
+        for (const p of posts) totalMedia += p.media.length;
+
+        let doneMedia = 0;
+        for (const p of posts) {
+          for (let i = 0; i < p.media.length; i++) {
+            const m = p.media[i];
+            doneMedia++;
+            setSummary(`メディアを Cloudflare R2 へアップロード中 (${doneMedia} / ${totalMedia})...`);
+            try {
+              m.wpUrl = await uploadLocalMediaToEmDash(m, p.id, i, emdashBase, secretKey);
+            } catch (err) {
+              appendLog(`メディアアップロード失敗 (post ${p.id}): ${err.message} -> 元URLを使用します`);
+              m.wpUrl = m.url;
+            }
+          }
+        }
+      }
+    }
+
+    function formatTweetBodyHtml(text) {
+      const normalized = String(text || "")
+        .trim()
+        .replace(/\r\n|\r/g, "\n");
+      if (!normalized) return "";
+      const paragraphs = normalized.split(/\n{2,}/);
+      if (paragraphs.length === 1) {
+        return escapeHtml(paragraphs[0]).replace(/\n/g, "<br />\n");
+      }
+      return paragraphs
+        .map((para, idx) => {
+          const inner = escapeHtml(para).replace(/\n/g, "<br />\n");
+          const margin = idx < paragraphs.length - 1 ? "0 0 1em 0" : "0";
+          return `<p style="margin: ${margin};">${inner}</p>`;
+        })
+        .join("\n");
+    }
+
+    function renderPostHtml(post) {
+      const postUrl = `https://x.com/${encodeURIComponent(post.username)}/status/${encodeURIComponent(post.id)}`;
+      const bodyHtml = formatTweetBodyHtml(post.text);
+
+      let mediaHtml = "";
+      if (post.media.length > 0) {
+        const items = post.media
+          .map((m) => {
+            const src = escapeHtml(m.wpUrl || m.url);
+            if (m.type === "video") {
+              return `        <video controls playsinline preload="metadata" src="${src}" style="max-width: 100%; height: auto; border-radius: 6px; margin-top: 4px;"><source src="${src}" type="video/mp4" /><a href="${src}" target="_blank" rel="noopener">動画を表示</a></video>`;
+            }
+            return `        <a href="${src}" target="_blank" rel="noopener"><img decoding="async" src="${src}" alt="Post Media" loading="lazy" /></a>`;
+          })
+          .join("<br />\n");
+        mediaHtml = `\n    <div class="x-log-media">\n${items}\n    </div>`;
+      }
+
+      let quotedHtml = "";
+      if (post.referencedPost) {
+        const ref = post.referencedPost;
+        const refLinkHtml = ref.id
+          ? ` (<a href="https://x.com/${encodeURIComponent(ref.username)}/status/${encodeURIComponent(ref.id)}" target="_blank" rel="noopener">元ポスト</a>)`
+          : "";
+        const refBody = formatTweetBodyHtml(ref.text);
+        quotedHtml = `\n    <div class="x-log-quoted">
+      <div class="x-log-quoted-header">@${escapeHtml(ref.username)} のポスト${refLinkHtml}:</div>
+      <div class="x-log-body" style="word-break: break-word;">${refBody}</div>
+    </div>`;
+      }
+
+      return `  <div class="x-log-post" id="x-post-${escapeHtml(post.id)}">
+    <div class="x-log-header">
+      <a href="${postUrl}" target="_blank" rel="noopener">${escapeHtml(post.timeStr)}</a>
+    </div>
+    <div class="x-log-body" style="word-break: break-word;">${bodyHtml}</div>${mediaHtml}${quotedHtml}
+  </div>`;
+    }
+
+    function buildDayHtml(dateStr, dayPosts) {
+      const sorted = [...dayPosts].sort((a, b) => {
+        try {
+          const bigA = BigInt(a.id);
+          const bigB = BigInt(b.id);
+          return bigB > bigA ? 1 : bigB < bigA ? -1 : 0;
+        } catch {
+          return b.id.localeCompare(a.id);
+        }
+      });
+      const blocks = sorted.map((p) => renderPostHtml(p)).join("\n");
+      return `<div class="x-log-day-container" data-date="${escapeHtml(dateStr)}">\n  ${X_LOG_STYLE}\n${blocks}\n</div>`;
+    }
+
+    /**
+     * Cloudflare D1 一括インポート用 SQL を生成
+     */
+    function sqlEscape(str) {
+      return "'" + String(str || "").replace(/'/g, "''") + "'";
+    }
+
+    function generateD1Sql(postsByDateMap) {
+      const sortedDates = Array.from(postsByDateMap.keys()).sort();
+      const now = new Date().toISOString();
+      const lines = [
+        "-- x-logger (EmDash Edition) D1 Bulk Import SQL",
+        "CREATE TABLE IF NOT EXISTS x_log_posts (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'published', post_count INTEGER NOT NULL DEFAULT 0, published_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+      ];
+
+      for (const dateStr of sortedDates) {
+        const dayPosts = postsByDateMap.get(dateStr);
+        const contentHtml = buildDayHtml(dateStr, dayPosts);
+        const id = `post_${dateStr}`;
+        const pubAt = `${dateStr}T00:00:01Z`;
+        lines.push(
+          `INSERT OR REPLACE INTO x_log_posts (id, slug, title, content, status, post_count, published_at, created_at, updated_at) VALUES (${sqlEscape(id)}, ${sqlEscape(dateStr)}, ${sqlEscape(dateStr)}, ${sqlEscape(contentHtml)}, 'published', ${dayPosts.length}, ${sqlEscape(pubAt)}, ${sqlEscape(now)}, ${sqlEscape(now)});`
+        );
+      }
+      return lines.join("\n") + "\n";
+    }
+
+    /**
+     * Markdown 文字列生成（画像・動画なし）
+     */
+    function buildMarkdownForPosts(title, posts) {
+      const byDate = new Map();
+      for (const p of posts) {
+        if (!byDate.has(p.dateStr)) byDate.set(p.dateStr, []);
+        byDate.get(p.dateStr).push(p);
+      }
+
+      const sortedDates = Array.from(byDate.keys()).sort((a, b) => b.localeCompare(a));
+      const sections = [];
+
+      for (const dateStr of sortedDates) {
+        const list = byDate.get(dateStr).sort((a, b) => {
+          try {
+            return BigInt(b.id) > BigInt(a.id) ? 1 : -1;
+          } catch {
+            return b.id.localeCompare(a.id);
+          }
+        });
+
+        const blocks = list.map((post) => {
+          const postUrl = `https://x.com/${post.username}/status/${post.id}`;
+          let md = `<!-- x-post:${post.id} date:${post.dateStr} time:${post.timeStr} -->\n`;
+          md += `### [${post.timeStr}](${postUrl})\n\n`;
+          md += `${post.text.trim()}\n`;
+          if (post.referencedPost) {
+            const ref = post.referencedPost;
+            const refUrl = ref.id ? `https://x.com/${ref.username}/status/${ref.id}` : "";
+            const headerLink = refUrl ? ` ([元ポスト](${refUrl}))` : "";
+            const refLines = ref.text
+              .trim()
+              .split(/\r?\n/)
+              .map((l) => `> ${l}`)
+              .join("\n");
+            md += `\n> **@${ref.username} のポスト${headerLink}:**\n${refLines}\n`;
+          }
+          md += `<!-- /x-post:${post.id} -->`;
+          return md;
+        });
+
+        sections.push(`## ${dateStr}\n\n${blocks.join("\n\n")}`);
+      }
+
+      return `# ${title}\n\n${sections.join("\n\n---\n\n")}\n`;
+    }
+
+    function downloadTextFile(filename, text, mimeType = "text/plain;charset=utf-8") {
+      const blob = new Blob([text], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    // フォーム送信ハンドラ
+    const form = document.getElementById("archive-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitter = e.submitter;
+      const actionMode = submitter ? submitter.value : "export_xml";
+
+      if (!usernameInput.checkValidity()) {
+        usernameError.classList.add("visible");
+        usernameInput.focus();
+        return;
+      }
+
+      if (loadedRawTweets.length === 0) {
+        setSummary("[エラー] 先にXアーカイブ（フォルダまたは tweets.js）を選択してください。");
+        return;
+      }
+
+      const buttons = form.querySelectorAll("button[type='submit']");
+      buttons.forEach((b) => (b.disabled = true));
+
+      try {
+        const posts = buildNormalizedArchivePosts();
+        if (posts.length === 0) {
+          setSummary("条件に一致するポストが0件でした。フィルタ条件を確認してください。");
+          return;
+        }
+
+        appendLog(`フィルタ後の対象ポスト数: ${posts.length} 件`);
+
+        if (actionMode === "export_md") {
+          const wantYear = document.getElementById("md-target-year").checked;
+          const wantMonth = document.getElementById("md-target-month").checked;
+          const wantFull = document.getElementById("md-target-full").checked;
+
+          if (!wantYear && !wantMonth && !wantFull) {
+            setSummary("[エラー] 出力する Markdown ファイル形式を1つ以上選択してください。");
+            return;
+          }
+
+          let fileCount = 0;
+          if (wantYear) {
+            const byYear = new Map();
+            for (const p of posts) {
+              if (!byYear.has(p.yearStr)) byYear.set(p.yearStr, []);
+              byYear.get(p.yearStr).push(p);
+            }
+            for (const [yearStr, yPosts] of byYear.entries()) {
+              const md = buildMarkdownForPosts(`X Log - Year ${yearStr}`, yPosts);
+              downloadTextFile(`Year${yearStr}.md`, md, "text/markdown;charset=utf-8");
+              fileCount++;
+            }
+          }
+
+          if (wantMonth) {
+            const byMonth = new Map();
+            for (const p of posts) {
+              if (!byMonth.has(p.yearMonthStr)) byMonth.set(p.yearMonthStr, []);
+              byMonth.get(p.yearMonthStr).push(p);
+            }
+            for (const [ymStr, mPosts] of byMonth.entries()) {
+              const md = buildMarkdownForPosts(`X Log - Month ${ymStr}`, mPosts);
+              downloadTextFile(`Month${ymStr}.md`, md, "text/markdown;charset=utf-8");
+              fileCount++;
+            }
+          }
+
+          if (wantFull) {
+            const md = buildMarkdownForPosts("X Log - Full Data", posts);
+            downloadTextFile("Fulldata.md", md, "text/markdown;charset=utf-8");
+            fileCount++;
+          }
+
+          setSummary(`Markdown 生成完了: ${fileCount} ファイルをダウンロードしました。`);
+          return;
+        }
+
+        // D1 SQL出力 または EmDash API直接送信
+        const mediaMode = document.querySelector("input[name='media_mode']:checked")?.value || "emdash_r2";
+        if (actionMode === "push_emdash") {
+          await resolveMediaUrlsForPosts(posts, mediaMode);
+        }
+
+        const postsByDate = new Map();
+        for (const p of posts) {
+          if (!postsByDate.has(p.dateStr)) postsByDate.set(p.dateStr, []);
+          postsByDate.get(p.dateStr).push(p);
+        }
+
+        if (actionMode === "export_sql") {
+          const sql = generateD1Sql(postsByDate);
+          downloadTextFile("x-logger-d1-import.sql", sql, "application/sql;charset=utf-8");
+          setSummary(
+            `Cloudflare D1 インポート用 SQL をダウンロードしました（${postsByDate.size} 日分の記事 / 計 ${posts.length} ポスト）。`
+          );
+          return;
+        }
+
+        if (actionMode === "push_emdash") {
+          const emdashBase = wpUrlInput.value.trim().replace(/\/+$/, "");
+          const secretKey = wpPassInput.value.trim();
+          if (!emdashBase) {
+            throw new Error("EmDash 送信には EmDash サイトURL の入力が必要です。");
+          }
+          const headers = { "Content-Type": "application/json" };
+          if (secretKey) {
+            headers.Authorization = `Bearer ${secretKey}`;
+          }
+
+          const sortedDates = Array.from(postsByDate.keys()).sort();
+          let doneDays = 0;
+          for (const dateStr of sortedDates) {
+            doneDays++;
+            setSummary(`EmDash (D1) へ日別記事を送信中 (${doneDays} / ${sortedDates.length}: ${dateStr})...`);
+            const dayHtml = buildDayHtml(dateStr, postsByDate.get(dateStr));
+
+            const saveRes = await fetch(`${emdashBase}/_emdash/api/posts`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                title: dateStr,
+                slug: dateStr,
+                content: dayHtml,
+                date: `${dateStr}T00:00:01Z`
+              })
+            });
+
+            if (!saveRes.ok) {
+              const errText = await saveRes.text();
+              appendLog(`[失敗] ${dateStr}: ${errText}`);
+            } else {
+              const resJson = await saveRes.json();
+              appendLog(`[成功] ${dateStr} (${resJson.action === "updated" ? "上書き更新" : "新規作成"})`);
+            }
+          }
+
+          setSummary(`EmDash (D1 + R2) 一括送信が完了しました（全 ${sortedDates.length} 日分）。`);
+        }
+      } catch (err) {
+        setSummary(`[エラー] ${err.message}`);
+      } finally {
+        buttons.forEach((b) => (b.disabled = false));
+      }
+    });
+  </script>
+</body>
+</html>
+

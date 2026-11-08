@@ -1,0 +1,15 @@
+{
+  "name": "emdash-xlog",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EmDash CMS + xlog.showya-kiss.com style daily X log viewer backed by Cloudflare D1 & R2",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
+
