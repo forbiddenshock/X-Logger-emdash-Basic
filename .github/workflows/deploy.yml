@@ -1,0 +1,199 @@
+name: "2. Deploy X-Logger (自動取得ワーカーのデプロイ)"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      cron_minutes:
+        description: "Cronの実行間隔（分単位: 1〜59。1なら毎分実行、30なら30分おき）"
+        required: false
+        default: "1"
+      github_md_targets:
+        description: "GitHubに出力するMarkdown種別 (year, month, full をカンマ区切りで指定)"
+        required: false
+        default: "year,month,full"
+      include_retweets:
+        description: "単純なリポスト(RT)も取得して記録するか (true / false)"
+        required: false
+        default: "true"
+      d1_name:
+        description: "接続するCloudflare D1データベース名"
+        required: false
+        default: "x-logger-db"
+      r2_bucket:
+        description: "接続するCloudflare R2バケット名"
+        required: false
+        default: "x-logger-media"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy X-Logger & Bind D1/R2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Wrangler
+        run: |
+          if [ ! -f "wrangler.toml" ]; then for d in */; do if [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi; done; fi
+          npm install
+
+      - name: Resolve D1 + R2 Bindings & Deploy X-Logger Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CRON_MINUTES_INPUT: ${{ github.event.inputs.cron_minutes || vars.CRON_MINUTES || '1' }}
+          D1_NAME: ${{ github.event.inputs.d1_name || 'x-logger-db' }}
+          R2_BUCKET: ${{ github.event.inputs.r2_bucket || 'x-logger-media' }}
+        run: |
+          if [ ! -f "wrangler.toml" ]; then for d in */; do if [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi; done; fi
+          node -e '
+            const fs = require("fs");
+            const token = (process.env.CLOUDFLARE_API_TOKEN || "").trim();
+            const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+            const d1Name = (process.env.D1_NAME || "x-logger-db").trim();
+            const r2Bucket = (process.env.R2_BUCKET || "x-logger-media").trim();
+
+            if (!token || !accountId) {
+              console.error("❌ CLOUDFLARE_API_TOKEN または CLOUDFLARE_ACCOUNT_ID が設定されていません。");
+              process.exit(1);
+            }
+
+            const headers = {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json"
+            };
+
+            async function main() {
+              // 1. R2 バケットの確認（未作成なら自動作成）
+              const r2Check = await fetch(
+                `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${encodeURIComponent(r2Bucket)}`,
+                { method: "GET", headers }
+              );
+              if (!r2Check.ok) {
+                console.log(`🌀 Creating R2 Bucket "${r2Bucket}"...`);
+                await fetch(
+                  `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets`,
+                  { method: "POST", headers, body: JSON.stringify({ name: r2Bucket }) }
+                );
+              }
+
+              // 2. D1 データベースIDの取得（未作成なら自動作成）
+              const d1ListRes = await fetch(
+                `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database?name=${encodeURIComponent(d1Name)}`,
+                { method: "GET", headers }
+              );
+              const d1ListJson = await d1ListRes.json();
+              let dbObj = (d1ListJson.result || []).find((d) => d.name === d1Name);
+              if (!dbObj || !dbObj.uuid) {
+                console.log(`🌀 Creating D1 Database "${d1Name}"...`);
+                const d1CreateRes = await fetch(
+                  `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database`,
+                  { method: "POST", headers, body: JSON.stringify({ name: d1Name }) }
+                );
+                const d1CreateJson = await d1CreateRes.json();
+                dbObj = d1CreateJson.result;
+              }
+
+              if (!dbObj || !dbObj.uuid) {
+                throw new Error(`D1データベース "${d1Name}" のUUIDを取得できませんでした。`);
+              }
+
+              // 3. Cron間隔の計算
+              const raw = String(process.env.CRON_MINUTES_INPUT || "1").trim();
+              let cronExpr = "* * * * *";
+              if (raw.includes(" ")) {
+                cronExpr = raw;
+              } else {
+                const mins = parseInt(raw, 10);
+                if (!isNaN(mins) && mins >= 2 && mins <= 59) {
+                  cronExpr = `*/${mins} * * * *`;
+                } else if (mins === 60) {
+                  cronExpr = "0 * * * *";
+                }
+              }
+
+              // 4. wrangler.toml の更新（Cron・D1・R2バインディングを設定）
+              let toml = fs.readFileSync("wrangler.toml", "utf8");
+              toml = toml.replace(/crons\s*=\s*\[.*?\]/, `crons = ["${cronExpr}"]`);
+              // 既存の [[d1_databases]] / [[r2_buckets]] セクションがあれば除去して末尾に追記
+              toml = toml.replace(/\[\[d1_databases\]\][\s\S]*?(?=\n\[|\s*$)/g, "").trim();
+              toml = toml.replace(/\[\[r2_buckets\]\][\s\S]*?(?=\n\[|\s*$)/g, "").trim();
+
+              const bindingsBlock = [
+                ``,
+                `[[d1_databases]]`,
+                `binding = "DB"`,
+                `database_name = ${JSON.stringify(d1Name)}`,
+                `database_id = ${JSON.stringify(dbObj.uuid)}`,
+                ``,
+                `[[r2_buckets]]`,
+                `binding = "MEDIA"`,
+                `bucket_name = ${JSON.stringify(r2Bucket)}`,
+                ``
+              ].join("\n");
+
+              fs.writeFileSync("wrangler.toml", toml + "\n" + bindingsBlock);
+              console.log(`✅ Configured Cron (${cronExpr}), D1 (${d1Name}: ${dbObj.uuid}), and R2 (${r2Bucket}).`);
+            }
+
+            main().catch((err) => {
+              console.error(err);
+              process.exit(1);
+            });
+          '
+          npx wrangler deploy \
+            --var GITHUB_MD_TARGETS:"${{ github.event.inputs.github_md_targets || vars.GH_MD_TARGETS || 'year,month,full' }}" \
+            --var INCLUDE_RETWEETS:"${{ github.event.inputs.include_retweets || vars.INCLUDE_RETWEETS || 'true' }}"
+
+      - name: Sync GitHub Secrets to Cloudflare Worker Secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          X_USERNAME: ${{ secrets.X_USERNAME }}
+          X_USER_ID: ${{ secrets.X_USER_ID }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          EMDASH_URL: ${{ secrets.EMDASH_URL }}
+          EMDASH_API_KEY: ${{ secrets.EMDASH_API_KEY }}
+          GITHUB_TOKEN_SECRET: ${{ secrets.GH_SYNC_TOKEN }}
+          GITHUB_REPO_SECRET: ${{ secrets.GH_SYNC_REPO || github.repository }}
+          TRIGGER_SECRET: ${{ secrets.TRIGGER_SECRET }}
+        run: |
+          if [ ! -f "wrangler.toml" ]; then for d in */; do if [ -f "${d}wrangler.toml" ]; then cd "$d"; break; fi; done; fi
+          node -e '
+            const fs = require("fs");
+            const secrets = {};
+            const keys = [
+              ["X_USERNAME", process.env.X_USERNAME],
+              ["X_USER_ID", process.env.X_USER_ID],
+              ["X_BEARER_TOKEN", process.env.X_BEARER_TOKEN],
+              ["X_API_KEY", process.env.X_API_KEY],
+              ["X_API_SECRET", process.env.X_API_SECRET],
+              ["X_ACCESS_TOKEN", process.env.X_ACCESS_TOKEN],
+              ["X_ACCESS_SECRET", process.env.X_ACCESS_SECRET],
+              ["EMDASH_URL", process.env.EMDASH_URL],
+              ["EMDASH_API_KEY", process.env.EMDASH_API_KEY],
+              ["GITHUB_TOKEN", process.env.GITHUB_TOKEN_SECRET],
+              ["GITHUB_REPO", process.env.GITHUB_TOKEN_SECRET ? process.env.GITHUB_REPO_SECRET : ""],
+              ["TRIGGER_SECRET", process.env.TRIGGER_SECRET]
+            ];
+            for (const [k, v] of keys) {
+              if (v && String(v).trim() !== "") {
+                secrets[k] = String(v).trim();
+              }
+            }
+            fs.writeFileSync(".cf-secrets.json", JSON.stringify(secrets));
+          '
+          npx wrangler secret bulk .cf-secrets.json
+          rm -f .cf-secrets.json
